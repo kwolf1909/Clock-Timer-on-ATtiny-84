@@ -1,13 +1,7 @@
-#define SDA_PORT PORTA
-#define SDA_PIN 6
-#define SCL_PORT PORTA
-#define SCL_PIN 4
-#define I2C_FASTMODE 1
-#include <SoftWire.h>
-//#include <Wire.h>
+#include <Wire.h>
 #include <OneWire.h>
 #include <DS18B20_INT.h>
-#include "DateTime.h"
+#include <RTClib.h>
 #include "display.h"
 
 //#define DEBUGSERIAL
@@ -38,14 +32,14 @@ volatile uint8_t Rotary, newRotary;
 #define BEEP_COUNT          80
 #define TIMER_TICK          500
 
-bool bNewRotary, bShow;
-int16_t temp;
+bool bNewRotary, bShow, bColon;
 uint8_t timerMinutes, timerSeconds, state, min, sec, prevRotary, beepCount;
+int16_t temp;
 uint32_t curTime, lastPushTime, lastTempTime, lastTempReqTime, lastFlashTime, lastTimer;
 
-volatile static bool bBuzzer;
-volatile static uint8_t buzzerCount;
-volatile static uint16_t buzzerDuration;
+volatile bool bBuzzer;
+volatile uint8_t buzzerCount;
+volatile uint16_t buzzerDuration;
 
 enum { STATE_REQTEMP = 1, STATE_REQTEMPWAIT, STATE_SHOWTEMP, STATE_WAITTEMP, STATE_SELMIN, STATE_SELSEC, STATE_RUNTIMER, STATE_TIMERBEEP };
 
@@ -185,7 +179,7 @@ void loop () {
       break;
 
     case STATE_SHOWTEMP:
-      temp = sensor.getTempCentiC() * 4 + 5;
+      temp = sensor.getTempCentiC();
 
 #ifdef DEBUGSERIAL
       sprintf(sDebug, "Temperature: %d C", temp);
@@ -238,7 +232,8 @@ void loop () {
       // update every half second
       if (curTime > lastTimer) {
         lastTimer += TIMER_TICK;
-        if (showTimer() == false) state = STATE_TIMERBEEP;
+        if (showTimer(bColon) == false) state = STATE_TIMERBEEP;
+        bColon = !bColon;
       }
       break;
 
@@ -287,10 +282,10 @@ uint8_t handleButton(uint8_t curState) {
     case STATE_SELSEC:
       if (timerMinutes || timerSeconds) {
         // set timer start condition
-        //dt.settime(0, timerMinutes, timerSeconds);
         dt = DateTime(2026, 1, 1, 0, timerMinutes, timerSeconds);
         lastTimer = curTime + TIMER_TICK;
         buzzer(50, 1);
+        bColon = true;
         return STATE_RUNTIMER;
       }
       else {
@@ -314,8 +309,8 @@ uint8_t handleButton(uint8_t curState) {
   return STATE_REQTEMP;
 }
 
-bool showTimer(void) {
-  if (bShow) {
+bool showTimer(bool colon) {
+  if (colon) {
     showDisplay(dt.minute() / 10, dt.minute() % 10, dt.second() / 10, dt.second() % 10, 0xF, true, false);
 
 #ifdef DEBUGSERIAL
@@ -348,7 +343,6 @@ bool showTimer(void) {
     // decrease second
     dt = dt - (TimeSpan)1;
   }
-  bShow = !bShow;
   return true;
 }
 
