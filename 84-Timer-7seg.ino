@@ -31,7 +31,7 @@
 #define DISPLAY_BRIGHTNESS  4
 #define DISPLAY_ADDRESS     0x70
 
-bool bShow, bColon, buttonPressed, buttonLongPressed, buzzer;
+bool bShow, bColon, newVal, buttonPressed, buttonLongPressed, buzzer;
 int8_t rotaryDelta;
 uint8_t timerMinutes, timerSeconds, state, min, sec, beepCount, oscVal, buzzerCount, digits;
 int16_t temp;
@@ -187,15 +187,28 @@ void loop () {
 
     case STATE_SELMIN:
       // grab new value
+      newVal = false;
       if (rotaryDelta) {
-        if (rotaryDelta == 1 && timerMinutes == 59 && timerSeconds == 0) timerSeconds = 59;
-        if (rotaryDelta == 1 && timerMinutes < 59) timerMinutes++;
-        if (rotaryDelta == -1 && timerMinutes > 0) timerMinutes--;
-        bShow = true;
-        triggerBuzzer(50, 1);
+        if (rotaryDelta == 1 && timerMinutes == 59 && timerSeconds == 0) {
+          timerSeconds = 59;
+          newVal = true;
+        }
+        if (rotaryDelta == 1 && timerMinutes < 59) {
+          timerMinutes++;
+          newVal = true;
+        }
+        if (rotaryDelta == -1 && timerMinutes > 0) {
+          timerMinutes--;
+          newVal = true;
+        }
       }
+      if (newVal && rotaryDelta) {
+        triggerBuzzer(50, 1);
+        bShow = true;
+      }
+
       // flash minutes
-      if (curTime - lastFlashTime > FLASH1_DELAY || rotaryDelta) {
+      if (curTime - lastFlashTime > FLASH1_DELAY || newVal) {
         lastFlashTime = curTime;
         if (bShow) digits = 0b1111; else digits = 0b0011;
         showDisplay(timerMinutes / 10, timerMinutes % 10, timerSeconds / 10, timerSeconds % 10, digits, true, false);
@@ -205,14 +218,24 @@ void loop () {
 
     case STATE_SELSEC:
       // grab new value
+      newVal = false;
       if (rotaryDelta) {
-        if (rotaryDelta == 1 && timerSeconds < 59) timerSeconds++;
-        if (rotaryDelta == -1 && timerSeconds > 0) timerSeconds--;
-        bShow = true;
-        triggerBuzzer(50, 1);
+        if (rotaryDelta == 1 && timerSeconds < 59) {
+          timerSeconds++;
+          newVal = true;
+        }
+        if (rotaryDelta == -1 && timerSeconds > 0) {
+          timerSeconds--;
+          newVal = true;
+        }
       }
+      if (newVal && rotaryDelta) {
+        triggerBuzzer(50, 1);
+        bShow = true;
+      }
+
       // flash minutes
-      if (curTime - lastFlashTime > FLASH1_DELAY || rotaryDelta) {
+      if (curTime - lastFlashTime > FLASH1_DELAY || newVal) {
         lastFlashTime = curTime;
         if (bShow) digits = 0b1111; else digits = 0b1100;
         showDisplay(timerMinutes / 10, timerMinutes % 10, timerSeconds / 10, timerSeconds % 10, digits, true, false);
