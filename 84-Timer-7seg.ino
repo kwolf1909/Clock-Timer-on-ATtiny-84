@@ -16,7 +16,7 @@
 #define BUZZER_PIN      5   // PA5
 #define BUTTON_PIN      7   // PA7
 #else
-#error "Wrong Board selected!"
+#error "Wrong board selected!"
 #endif
 
 // ----------------------------- globals ----------------------------------------------
@@ -31,9 +31,9 @@
 #define DISPLAY_BRIGHTNESS  4
 #define DISPLAY_ADDRESS     0x70
 
-bool bShow, bColon, newVal, buttonPressed, buttonLongPressed, buzzer;
+bool bShow, bColon, newVal, buttonPressed, buttonLongPressed, buzzer, buzzerCal;
 int8_t rotaryDelta;
-uint8_t timerMinutes, timerSeconds, state, min, sec, beepCount, oscVal, buzzerCount, digits;
+uint8_t timerMinutes, timerSeconds, timerState, buzzerState, min, sec, beepCount, oscVal, buzzerCount, digits;
 int16_t temp;
 uint16_t buzzerDuration;
 uint32_t curTime, lastTempTime, lastTempReqTime, lastFlashTime, lastTimer;
@@ -41,13 +41,13 @@ uint32_t curTime, lastTempTime, lastTempReqTime, lastFlashTime, lastTimer;
 enum { STATE_REQTEMP = 1, STATE_REQTEMPWAIT, STATE_SHOWTEMP, STATE_WAITTEMP, STATE_SELMIN, STATE_SELSEC,
        STATE_SELOSC, STATE_RUNTIMER, STATE_TIMERBEEP
      };
-enum { BUZZER_IDLE = 1, BUZZER_START, BUZZER_ON, BUZZER_WAIT };
+enum { BUZZER_IDLE = 1, BUZZER_START, BUZZER_ON, BUZZER_WAIT, BUZZER_CALSTART, BUZZER_CAL };
 
-DateTime dt(2026, 1, 1, 0, 0, 0);
 OneWire oneWire(ONEWIRE_PIN);
 DS18B20_INT sensor(&oneWire);
 OneButtonTiny button(BUTTON_PIN, true, true);
 RotaryEncoder *rotary = nullptr;
+DateTime dt(2026, 1, 1, 0, 0, 0);
 
 #ifdef DEBUGSERIAL
 char sDebug[64];
@@ -94,9 +94,11 @@ void setup() {
   timerMinutes = 0;
   timerSeconds = 0;
   buzzer = false;
+  buzzerCal = false;
   buttonPressed = false;
   buttonLongPressed = false;
-  state = STATE_REQTEMP;
+  timerState = STATE_REQTEMP;
+  buzzerState = BUZZER_IDLE;
 
   // Initialize Timer1 for 1000 Hz generation
   setupTimer1();
@@ -137,17 +139,17 @@ void loop () {
   if (dir == RotaryEncoder::Direction::COUNTERCLOCKWISE) rotaryDelta = -1;
   if (dir == RotaryEncoder::Direction::CLOCKWISE) rotaryDelta = 1;
 
-  //------------------- handle push button ---------------------------
-  if (buttonPressed) {
-    buttonPressed = false;
-    state = handleButton(state);
-  }
-  if (buttonLongPressed) {
-    buttonLongPressed = false;
-    state = handleButtonLong(state);
-  }
+  //------------------ process state machines -------------------------
+  timerState = handleButton(timerState);
+  timerState = handleTimerState(timerState);
+  buzzerState = handleBuzzerState(buzzerState);
 
-  //------------------ process state machine -------------------------
+  delay(10);
+}
+
+//----------------------- helper function -----------------------------
+
+uint8_t handleTimerState(uint8_t state) {
   switch (state) {
     case STATE_REQTEMP:
 #ifdef DEBUGSERIAL
@@ -155,7 +157,7 @@ void loop () {
 #endif
       sensor.requestTemperatures();
       lastTempReqTime = curTime;
-      state = STATE_REQTEMPWAIT;
+      return STATE_REQTEMPWAIT;
       break;
 
     case STATE_REQTEMPWAIT:
@@ -167,7 +169,7 @@ void loop () {
           break;
         }
         temp = sensor.getTempCentiC();
-        state = STATE_SHOWTEMP;
+        return STATE_SHOWTEMP;
       }
       break;
 
@@ -178,11 +180,10 @@ void loop () {
 #endif
       showDisplay (temp / 1000, (temp / 100) % 10, (temp / 10) % 10, 0, 0xF, false, true);
       lastTempTime = curTime;
-      state = STATE_WAITTEMP;
-      break;
+      return STATE_WAITTEMP;
 
     case STATE_WAITTEMP:
-      if (curTime - lastTempTime > TEMP_DELAY) state = STATE_REQTEMP;
+      if (curTime - lastTempTime > TEMP_DELAY) return STATE_REQTEMP;
       break;
 
     case STATE_SELMIN:
@@ -257,7 +258,10 @@ void loop () {
       // update every half second
       if (curTime > lastTimer) {
         lastTimer += TIMER_TICK;
-        if (showTimer(bColon) == false) state = STATE_TIMERBEEP;
+        if (showTimer(bColon) == false) {
+          beepCount = BEEP_COUNT;
+          return STATE_TIMERBEEP;
+        }
         bColon = !bColon;
       }
       break;
@@ -270,117 +274,135 @@ void loop () {
         triggerBuzzer(100, 1);
 
         // exit after number of beeps
-        if (--beepCount == 0) state = STATE_REQTEMP;
+        if (--beepCount == 0) return STATE_REQTEMP;
       }
       break;
   }
-  handleBuzzer();
-  delay(10);
+  return state;
 }
 
-//----------------------- helper function -----------------------------
+uint8_t handleButton(uint8_t state) {
 
-uint8_t handleButton(uint8_t curState) {
-
-  switch (curState) {
+  switch (state) {
     case STATE_SHOWTEMP:
     case STATE_WAITTEMP:
-      bShow = true;
-      timerMinutes = 0;
-      timerSeconds = 0;
-      triggerBuzzer(50, 1);
-      return STATE_SELMIN;
+      if (buttonPressed) {
+        buttonPressed = false;
+        bShow = true;
+        timerMinutes = 0;
+        timerSeconds = 0;
+        triggerBuzzer(50, 1);
+        return STATE_SELMIN;
+      }
+      if (buttonLongPressed) {
+        buttonLongPressed = false;
+        buzzerCal = true;
+        oscVal = OSCCAL;
+        showDisplay (0, (oscVal / 100) % 10, (oscVal / 10) % 10, oscVal % 10, 0x7, false, false);
+        return STATE_SELOSC;
+      }
+      break;
 
     case STATE_SELMIN:
-      bShow = true;
-      triggerBuzzer(50, 1);
-      return STATE_SELSEC;
+      if (buttonPressed) {
+        buttonPressed = false;
+        bShow = true;
+        triggerBuzzer(50, 1);
+        return STATE_SELSEC;
+      }
+      break;
 
     case STATE_SELSEC:
-      if (timerMinutes || timerSeconds) {
-        // set timer start condition
-        dt = DateTime(2026, 1, 1, 0, timerMinutes, timerSeconds);
-        lastTimer = curTime + TIMER_TICK;
-        triggerBuzzer(50, 1);
-        bColon = true;
-        return STATE_RUNTIMER;
+      if (buttonPressed) {
+        buttonPressed = false;
+        if (timerMinutes || timerSeconds) {
+          // set timer start condition
+          dt = DateTime(2026, 1, 1, 0, timerMinutes, timerSeconds);
+          lastTimer = curTime + TIMER_TICK;
+          triggerBuzzer(50, 1);
+          bColon = true;
+          return STATE_RUNTIMER;
+        }
+        else {
+          triggerBuzzer(50, 1);
+          delay(100);
+          return STATE_SHOWTEMP;
+        }
       }
-      else {
+      break;
+
+    case STATE_SELOSC:
+      if (buttonPressed) {
+        buttonPressed = false;
+        buzzerCal = false;
+        EEPROM.write(E2END, oscVal);
+        return STATE_SHOWTEMP;
+      }
+      break;
+
+    case STATE_RUNTIMER:
+      if (buttonPressed) {
+        buttonPressed = false;
+        timerMinutes = 0;
+        timerSeconds = 0;
         triggerBuzzer(50, 1);
         delay(100);
         return STATE_SHOWTEMP;
       }
       break;
 
-    case STATE_SELOSC:
-      triggerBuzzer(50, 1);
-      EEPROM.write(E2END, oscVal);
-      return STATE_SHOWTEMP;
-
-    case STATE_RUNTIMER:
-      timerMinutes = 0;
-      timerSeconds = 0;
-      triggerBuzzer(50, 1);
-      delay(100);
-      return STATE_SHOWTEMP;
-
     case STATE_TIMERBEEP:
       delay(100);
       return STATE_SHOWTEMP;
   }
-  return STATE_SHOWTEMP;
+  return state;
 }
 
-uint8_t handleButtonLong(uint8_t curState) {
+uint8_t handleBuzzerState(uint8_t state) {
 
-  switch (curState) {
-    case STATE_SHOWTEMP:
-    case STATE_WAITTEMP:
-      triggerBuzzer(50, 1);
-      oscVal = OSCCAL;
-      showDisplay (0, (oscVal / 100) % 10, (oscVal / 10) % 10, oscVal % 10, 0x7, false, false);
-      return STATE_SELOSC;
-
-    default:
-      return curState;
-  }
-}
-
-void handleBuzzer() {
-
-  static uint8_t buzzerState = BUZZER_IDLE;
   static uint32_t buzzerTime;
 
-  switch (buzzerState) {
+  switch (state) {
     case BUZZER_IDLE:
-      if (buzzer) buzzerState = BUZZER_START;
+      if (buzzer) return BUZZER_START;
+      if (buzzerCal) return BUZZER_CALSTART;
       break;
 
     case BUZZER_START:
       // Setup buzzer
       buzzerTime = millis();
-      buzzerState = BUZZER_ON;
       DDRA |= 1 << BUZZER_PIN;
-      break;
+      return BUZZER_ON;
 
     case BUZZER_ON:
       if (millis() - buzzerTime > buzzerDuration) {
         DDRA &= ~(1 << BUZZER_PIN);
         buzzerTime = millis();
         buzzerCount--;
-        buzzerState = BUZZER_WAIT;
+        return BUZZER_WAIT;
       }
       break;
 
     case BUZZER_WAIT:
       if (buzzerCount == 0) {
         buzzer = false;
-        buzzerState = BUZZER_IDLE;
-        break;
+        return BUZZER_IDLE;
       }
-      if (millis() - buzzerTime > BUZZER_DELAY) buzzerState = BUZZER_START;
+      if (millis() - buzzerTime > BUZZER_DELAY) return BUZZER_START;
+      break;
+
+    case BUZZER_CALSTART:
+      DDRA |= 1 << BUZZER_PIN;
+      return BUZZER_CAL;
+
+    case BUZZER_CAL:
+      if (buzzerCal == false) {
+        DDRA &= ~(1 << BUZZER_PIN);
+        return BUZZER_IDLE;
+      }
       break;
   }
+  return state;
 }
 
 bool showTimer(bool colon) {
@@ -394,10 +416,7 @@ bool showTimer(bool colon) {
     //Serial.println(sDebug);
 #endif
     // exit condition
-    if (!dt.minute() && !dt.second()) {
-      beepCount = BEEP_COUNT;
-      return false;
-    }
+    if (!dt.minute() && !dt.second()) return false;
 
     // trigger minute beeps
     if (dt.second() == 0) {
