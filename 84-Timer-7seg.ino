@@ -258,10 +258,19 @@ uint8_t handleTimerState(uint8_t state) {
       // update every half second
       if (curTime > lastTimer) {
         lastTimer += TIMER_TICK;
-        if (showTimer(bColon) == false) {
+        showDisplay(dt.minute() / 10, dt.minute() % 10, dt.second() / 10, dt.second() % 10, 0b1111, bColon, false);
+        if (!dt.minute() && !dt.second()) {
           beepCount = BEEP_COUNT;
+          lastFlashTime = curTime;
           return STATE_TIMERBEEP;
         }
+        if (bColon) {
+          // trigger minute beeps
+          if (dt.minute() <= 5 && dt.second() == 0) triggerBuzzer(100, dt.minute());
+          // trigger seconds beeps
+          if (dt.minute() == 0 && dt.second() && dt.second() <= 10) triggerBuzzer(100, 1);
+        }
+        else dt = dt - (TimeSpan)1;
         bColon = !bColon;
       }
       break;
@@ -352,8 +361,11 @@ uint8_t handleButton(uint8_t state) {
       break;
 
     case STATE_TIMERBEEP:
-      delay(100);
-      return STATE_SHOWTEMP;
+      if (buttonPressed) {
+        buttonPressed = false;
+        delay(100);
+        return STATE_SHOWTEMP;
+      }
   }
   return state;
 }
@@ -403,36 +415,6 @@ uint8_t handleBuzzerState(uint8_t state) {
       break;
   }
   return state;
-}
-
-bool showTimer(bool colon) {
-
-  showDisplay(dt.minute() / 10, dt.minute() % 10, dt.second() / 10, dt.second() % 10, 0b1111, colon, false);
-
-  if (colon) {
-#ifdef DEBUGSERIAL
-    // print timer value
-    //sprintf(sDebug, "Timer: %02u:%02u", dt.minute(), dt.second());
-    //Serial.println(sDebug);
-#endif
-    // exit condition
-    if (!dt.minute() && !dt.second()) return false;
-
-    // trigger minute beeps
-    if (dt.second() == 0) {
-      if (dt.minute() <= 5) {
-        triggerBuzzer(100, dt.minute());
-      }
-    }
-    // trigger seconds beeps
-    if (dt.minute() == 0) {
-      if (dt.second() && dt.second() <= 10) {
-        triggerBuzzer(100, 1);
-      }
-    }
-  }
-  else dt = dt - (TimeSpan)1;
-  return true;
 }
 
 void setupTimer1() {
