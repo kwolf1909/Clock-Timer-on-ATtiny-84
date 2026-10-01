@@ -29,6 +29,7 @@
 #define BEEP_COUNT          80
 #define TIMER_TICK          500
 #define DISPLAY_BRIGHTNESS  4
+#define DISPLAY_DIGITS      5
 #define DISPLAY_ADDRESS     0x70
 
 bool bShow, bColon, newVal, buttonPressed, buttonLongPressed, buzzer, buzzerCal;
@@ -47,6 +48,7 @@ OneWire oneWire(ONEWIRE_PIN);
 DS18B20_INT sensor(&oneWire);
 OneButtonTiny button(BUTTON_PIN, true, true);
 RotaryEncoder *rotary = nullptr;
+Display display7;
 DateTime dt(2026, 1, 1, 0, 0, 0);
 
 #ifdef DEBUGSERIAL
@@ -68,18 +70,9 @@ void setup() {
 
   Wire.begin();
 
-  initDisplay(DISPLAY_ADDRESS, DISPLAY_BRIGHTNESS);
-
-  // Write "----" to the display
-  Wire.beginTransmission(DISPLAY_ADDRESS);
-  Wire.write(0);
-  writeWord(SYMBOL_MINUS);
-  writeWord(SYMBOL_MINUS);
-  writeWord(false);
-  writeWord(SYMBOL_MINUS);
-  writeWord(SYMBOL_MINUS);
-  Wire.endTransmission();
-
+  display7.init(DISPLAY_ADDRESS, DISPLAY_DIGITS, DISPLAY_BRIGHTNESS);
+  display7.print("IN IT");
+  
   rotary = new RotaryEncoder(RotaryEncoder::LatchMode::FOUR3);
 
   // setup input pins with pull-ups
@@ -178,7 +171,7 @@ uint8_t handleTimerState(uint8_t state) {
       //sprintf(sDebug, "Temperature: %d C", temp);
       //Serial.println(sDebug);
 #endif
-      showDisplay (temp / 1000, (temp / 100) % 10, (temp / 10) % 10, 0, 0xF, false, true);
+      showDisplay (temp / 1000, (temp / 100) % 10, (temp / 10) % 10, 0, 0b1111, false, true);
       lastTempTime = curTime;
       return STATE_WAITTEMP;
 
@@ -248,9 +241,9 @@ uint8_t handleTimerState(uint8_t state) {
       // grab new value
       if (rotaryDelta) {
         if (rotaryDelta == 1 && oscVal < 255) oscVal++;
-        if (rotaryDelta == -1 && oscVal > 0) oscVal--;
+        if (rotaryDelta == -1 && oscVal) oscVal--;
         OSCCAL = oscVal;
-        showDisplay (0, (oscVal / 100) % 10, (oscVal / 10) % 10, oscVal % 10, 0x7, false, false);
+        showDisplay (0, (oscVal / 100) % 10, (oscVal / 10) % 10, oscVal % 10, 0x0111, false, false);
       }
       break;
 
@@ -415,6 +408,31 @@ uint8_t handleBuzzerState(uint8_t state) {
       break;
   }
   return state;
+}
+
+void showDisplay(uint8_t digit1, uint8_t digit2, uint8_t digit3, uint8_t digit4, uint8_t showDigit, bool colon, bool temp) {
+  char disp[DISPLAY_DIGITS + 1];
+
+  for (uint8_t i = 0; i < DISPLAY_DIGITS; i++) disp[i] = 0;
+  
+  if (temp) {
+    // show temperature
+    disp[0] = (showDigit & 0b1000) ? '0' + digit1 : ' ';
+    disp[1] = (showDigit & 0b0100) ? ('0' + digit2) | DOT : ' ';
+    disp[2] = ' ';
+    disp[3] = (showDigit & 0b0010) ? '0' + digit3 : ' ';
+    disp[4] = (showDigit & 0b0001) ? 'C' : ' ';
+  }
+  else {
+    // show timer value
+    disp[0] = (showDigit & 0b1000) ? '0' + digit1 : ' ';
+    disp[1] = (showDigit & 0b0100) ? '0' + digit2 : ' ';
+    disp[2] = ' ' | (colon ? COLON : 0);
+    disp[3] = (showDigit & 0b0010) ? '0' + digit3 : ' ';
+    disp[4] = (showDigit & 0b0001) ? '0' + digit4 : ' ';
+  }
+  disp[5] = 0;
+  display7.print(disp);
 }
 
 void setupTimer1() {
