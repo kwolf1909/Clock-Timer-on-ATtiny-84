@@ -1,11 +1,13 @@
 // Display object
 
-#define HT16K33_CMD       0x80
-#define HT16K33_ON        1
-#define HT16K33_OFF       0
-#define HT16K33_1HZ       2
-#define HT16K33_2HZ       4
-#define HT16K33_HALFHZ    6
+#define HT16K33_SYSCMD    0x20
+#define HT16K33_BLINKCMD  0x80
+#define HT16K33_BRIGHTCMD 0xE0
+#define HT16K33_ON        0x01
+#define HT16K33_OFF       0x00
+#define HT16K33_1HZ       0x02
+#define HT16K33_2HZ       0x04
+#define HT16K33_HALFHZ    0x06
 
 #define SEG_RIGHTUP       0x02
 #define SEG_RIGHTDOWN     0x04
@@ -46,14 +48,14 @@ void Display::init(uint8_t addr, uint8_t digits, uint8_t brightness) {
   numDigits = digits;
 
   Wire.beginTransmission(address);
-  Wire.write(0x21);                // Normal operation mode
+  Wire.write(HT16K33_SYSCMD | HT16K33_ON);    // Normal operation mode
   Wire.endTransmission();
   Wire.beginTransmission(address);
-  Wire.write(0xE0 + brightness);   // Set brightness
+  Wire.write(HT16K33_BRIGHTCMD + brightness); // Set brightness
   Wire.endTransmission();
   clear();
   Wire.beginTransmission(address);
-  Wire.write(0x81);                // Display on
+  Wire.write(HT16K33_BLINKCMD | HT16K33_ON);  // Display on
   Wire.endTransmission();
 }
 
