@@ -196,7 +196,7 @@ uint8_t handleTimerState(uint8_t state) {
           newVal = true;
         }
       }
-      if (newVal && rotaryDelta) {
+      if (newVal) {
         triggerBuzzer(50, 1);
         bShow = true;
       }
@@ -208,6 +208,7 @@ uint8_t handleTimerState(uint8_t state) {
         showDisplay(timerMinutes / 10, timerMinutes % 10, timerSeconds / 10, timerSeconds % 10, digits, true, false);
         bShow = !bShow;
       }
+      if (timerMinutes == 59 && timerSeconds == 59) return STATE_SELSEC;
       break;
 
     case STATE_SELSEC:
@@ -223,7 +224,7 @@ uint8_t handleTimerState(uint8_t state) {
           newVal = true;
         }
       }
-      if (newVal && rotaryDelta) {
+      if (newVal) {
         triggerBuzzer(50, 1);
         bShow = true;
       }
@@ -327,7 +328,6 @@ uint8_t handleButton(uint8_t state) {
         }
         else {
           triggerBuzzer(50, 1);
-          delay(100);
           return STATE_SHOWTEMP;
         }
       }
