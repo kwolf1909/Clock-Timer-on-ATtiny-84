@@ -4,4 +4,5 @@ The timer is setup using the rotary encoder with push button.
 If timer is not running, the temperature is displayed.
 During countdown, timer beeps indicate the remaining five minutes.<br>
 A long press on the push button enables oscillator calibration mode. On buzzer output pin, a 1 KHz signal is output, which can be calibrated with rotary encoder (internally setting the OSCCAL-value) using a scope or frequency counter. The selected value is stored in EEPROM and used during boot.<br>
-External libraries used: OneWire, OneButton, DS18B20_INT
+External libraries used: OneWire, OneButton, DS18B20_INT<br>
+Compiled with TinyCore (MCUDude) in Arduino IDE.
